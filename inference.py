@@ -1,12 +1,14 @@
 import logging
 import os
 import time
+import math
 
 import numpy as np
 import rembg
 import torch
 import xatlas
 from PIL import Image
+from trimesh import transformations
 
 from TripoSR.tsr.system import TSR
 from TripoSR.tsr.utils import remove_background, resize_foreground, save_video
@@ -50,7 +52,7 @@ def inference(img_path, dest_path):
         'mc_resolution':256,
         'foreground_ratio':0.85,
         'output_dir':dest_path,
-        'model_save_format':'obj', #choices are ["obj", "glb"]
+        'model_save_format':'glb', #choices are ["obj", "glb"]
         'no_remove_bg':False,
         'render':False,
         'bake_texture':False,
@@ -118,6 +120,19 @@ def inference(img_path, dest_path):
         timer.start("Extracting mesh")
         meshes = model.extract_mesh(scene_codes, not args['bake_texture'], resolution=args['mc_resolution'])
         timer.end("Extracting mesh")
+        angle = -math.pi / 2.0
+        direction = [0, 1, 0]
+        center = [0, 0, 0]
+        rot_matrix = transformations.rotation_matrix(angle, direction, center)
+
+        angleb = -math.pi / 2.0
+        directionb = [1, 0, 0]
+        centerb = [0, 0, 0]
+        rot_matrixb = transformations.rotation_matrix(angleb, directionb, centerb)
+        if args['model_save_format'] == 'glb':
+            for mesh in meshes:
+                mesh.apply_transform(rot_matrixb)
+                mesh.apply_transform(rot_matrix)
 
         out_mesh_path = os.path.join(output_dir, str(i), f"mesh.{args['model_save_format']}")
         if args['bake_texture']:
@@ -135,7 +150,11 @@ def inference(img_path, dest_path):
             timer.start("Exporting mesh")
             meshes[0].export(out_mesh_path)
             timer.end("Exporting mesh")
-        
-        media_files_made[out_mesh_path] = 'OBJ'
+        if args['model_save_format'] == 'glb':
+            media_files_made[out_mesh_path] = 'GLB'
+        elif args['model_save_format'] == 'obj':
+            media_files_made[out_mesh_path] = 'GLB'
+        else:
+            media_files_made[out_mesh_path] = 'UNKNOWN'
     
     return media_files_made
